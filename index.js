@@ -6,9 +6,14 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
+const isProduction = process.argv.includes("--production"); // Pass `--production` flag during production
+const allowedOrigins = isProduction
+  ? ["https://monumental-youtiao-135118.netlify.app"] // Replace with your frontend URL
+  : ["http://localhost:5173"]; // Default for development
+
 const io = new Server(server, {
   cors: {
-    origin: "https://monumental-youtiao-135118.netlify.app/", // Frontend URL
+    origin: allowedOrigins, // Frontend URL
     methods: ["GET", "POST"],
   },
 });
