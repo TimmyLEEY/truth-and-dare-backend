@@ -209,40 +209,68 @@ const prompts = {
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
+  // Add player on connection
   socket.on("create_game", (playerName) => {
+    if (!playerName) {
+      socket.emit("error_message", "Player name is required.");
+      return;
+    }
+
+    const existingPlayer = players.find((p) => p.name === playerName);
+    if (existingPlayer) {
+      console.error(`Player name '${playerName}' is already taken.`);
+      socket.emit("error_message", "Player name already taken.");
+      return;
+    }
+
     const player = { id: socket.id, name: playerName };
     players.push(player);
     io.emit("player_list", players.map((p) => p.name));
   });
 
+  // Send game request
   socket.on("send_game_request", (targetUser) => {
     const targetPlayer = players.find((p) => p.name === targetUser);
     if (targetPlayer) {
+      console.log(`Game request sent from ${socket.id} to ${targetPlayer.id}`);
       socket.to(targetPlayer.id).emit("game_invitation", socket.id);
+    } else {
+      console.error(`Target player '${targetUser}' not found.`);
+      socket.emit("error_message", "Target player not found.");
     }
   });
 
+  // Accept game request
   socket.on("accept_game", (fromUser) => {
-    const player = players.find((p) => p.id === socket.id);
-    if (player) {
-      const room = fromUser;
-      gameStates[room] = {
-        players: {
-          [player.name]: { id: socket.id, turns: 0, consecutive: null },
-          [players.find((p) => p.id === fromUser).name]: { id: fromUser, turns: 0, consecutive: null },
-        },
-        currentTurn: player.name,
-        usedQuestions: {},
-      };
-      socket.join(room);
-      io.to(fromUser).emit("start_game", { room, opponent: player.name });
-      socket.emit("start_game", { room, opponent: players.find((p) => p.id === fromUser).name });
+    const targetPlayer = players.find((p) => p.id === fromUser);
+    const currentPlayer = players.find((p) => p.id === socket.id);
+
+    if (!targetPlayer || !currentPlayer) {
+      console.error(`One or both players not found. Target: ${fromUser}, Current: ${socket.id}`);
+      socket.emit("error_message", "Players not found.");
+      return;
     }
+
+    const room = fromUser;
+    gameStates[room] = {
+      players: {
+        [currentPlayer.name]: { id: socket.id, turns: 0, consecutive: null },
+        [targetPlayer.name]: { id: fromUser, turns: 0, consecutive: null },
+      },
+      currentTurn: currentPlayer.name,
+      usedQuestions: {},
+    };
+
+    socket.join(room);
+    io.to(fromUser).emit("start_game", { room, opponent: currentPlayer.name });
+    socket.emit("start_game", { room, opponent: targetPlayer.name });
   });
 
+  // Get a truth or dare prompt
   socket.on("get_prompt", ({ type, room }) => {
     const gameState = gameStates[room];
     if (!gameState) {
+      console.error(`Game state not found for room: ${room}`);
       socket.emit("error_message", "Game not found.");
       return;
     }
@@ -292,70 +320,39 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Delete room
   socket.on("delete_room", (room) => {
     delete gameStates[room];
-    socket.leave(room);
     io.to(room).emit("room_deleted");
+    socket.leave(room);
   });
 
-  socket.on("reconnect_room", ({ playerName, room }) => {
-    const gameState = gameStates[room];
-    if (gameState && gameState.players[playerName]) {
-      gameState.players[playerName].id = socket.id;
-
-      const player = players.find((p) => p.name === playerName);
-      if (player) player.disconnected = false;
-
-      socket.join(room);
-      io.to(room).emit("player_reconnected", playerName);
-      console.log(`${playerName} reconnected to room ${room}`);
-    } else {
-      socket.emit("error_message", "Room not found or expired.");
-    }
-  });
-
-
-  socket.on("rejoin_room", ({ room, playerName }) => {
-    if (rooms[room]) {
-      rooms[room].players.push(playerName);
-      socket.join(room);
-      io.to(room).emit("room_state", rooms[room]);
-    } else {
-      socket.emit("room_deleted");
-    }
-  });
-  
-
+  // Handle disconnection
   socket.on("disconnect", () => {
     console.log("A user disconnected:", socket.id);
+    players = players.filter((p) => p.id !== socket.id);
+    io.emit("player_list", players.map((player) => player.name));
 
-    const disconnectedPlayer = players.find((p) => p.id === socket.id);
+    for (const room in gameStates) {
+      const gameState = gameStates[room];
+      const playerName = Object.keys(gameState.players).find(
+        (name) => gameState.players[name].id === socket.id
+      );
 
-    if (disconnectedPlayer) {
-      disconnectedPlayer.disconnected = true;
-
-      setTimeout(() => {
-        if (disconnectedPlayer.disconnected) {
-          console.log(`Deleting room after timeout: ${socket.id}`);
-          players = players.filter((p) => p.id !== socket.id);
-
-          for (const room in gameStates) {
-            const gameState = gameStates[room];
-            if (gameState.players[disconnectedPlayer.name]) {
-              delete gameStates[room];
-              io.to(room).emit("room_deleted");
-            }
-          }
-        }
-      }, 300000); // 5 minutes
+      if (playerName) {
+        delete gameStates[room];
+        io.to(room).emit("room_deleted");
+      }
     }
   });
 });
 
+// Serve static files (if needed)
 app.get("/", (req, res) => {
   res.send("Backend is running.");
 });
 
+// Start server
 server.listen(PORT, () => {
   console.log(`Server running on http://127.0.0.1:${PORT}`);
 });
