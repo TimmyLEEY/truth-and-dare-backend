@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 5000;
 
 
 app.use(cors({
-  origin: "*", // Frontend URL
+  origin: "https://kaleidoscopic-gingersnap-626d8a.netlify.app/", // Frontend URL
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true,
 }));
@@ -20,7 +20,7 @@ app.use(express.json());
 
 const io = new Server(server, {
   cors: {
-    origin: "https://monumental-youtiao-135118.netlify.app/", // Frontend URL
+    origin: "https://kaleidoscopic-gingersnap-626d8a.netlify.app/", // Frontend URL
     methods: ["GET", "POST"],
   },
 });
