@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 5000;
 
 
 app.use(cors({
-  origin: "https://monumental-youtiao-135118.netlify.app", // Frontend URL
-  methods: ["GET", "POST"],
+  origin: "*", // Frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true,
 }));
 
