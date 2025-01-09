@@ -6,14 +6,19 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
-const isProduction = process.argv.includes("--production"); // Pass `--production` flag during production
-const allowedOrigins = isProduction
-  ? ["https://monumental-youtiao-135118.netlify.app"] // Replace with your frontend URL
-  : ["http://localhost:5173"]; // Default for development
+const PORT = process.env.PORT || 5000;
+
+
+app.use(cors({
+  origin: "https://monumental-youtiao-135118.netlify.app", // Frontend URL
+  methods: ["GET", "POST"],
+  credentials: true,
+}));
+
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins, // Frontend URL
+    origin: "https://monumental-youtiao-135118.netlify.app/", // Frontend URL
     methods: ["GET", "POST"],
   },
 });
@@ -435,7 +440,6 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on http://127.0.0.1:${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
