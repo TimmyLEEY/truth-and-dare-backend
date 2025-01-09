@@ -218,14 +218,15 @@ io.on("connection", (socket) => {
 
     const existingPlayer = players.find((p) => p.name === playerName);
     if (existingPlayer) {
-      console.error(`Player name '${playerName}' is already taken.`);
-      socket.emit("error_message", "Player name already taken.");
-      return;
+      // Update socket ID for reconnected player
+      existingPlayer.id = socket.id;
+    } else {
+      const player = { id: socket.id, name: playerName };
+      players.push(player);
     }
 
-    const player = { id: socket.id, name: playerName };
-    players.push(player);
     io.emit("player_list", players.map((p) => p.name));
+    console.log("Players:", players);
   });
 
   // Send game request
@@ -251,7 +252,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const room = fromUser;
+    const room = `${fromUser}-${socket.id}`;
     gameStates[room] = {
       players: {
         [currentPlayer.name]: { id: socket.id, turns: 0, consecutive: null },
@@ -322,8 +323,11 @@ io.on("connection", (socket) => {
 
   // Delete room
   socket.on("delete_room", (room) => {
-    delete gameStates[room];
-    io.to(room).emit("room_deleted");
+    if (gameStates[room]) {
+      delete gameStates[room];
+      io.to(room).emit("room_deleted");
+      console.log(`Room deleted: ${room}`);
+    }
     socket.leave(room);
   });
 
@@ -342,6 +346,7 @@ io.on("connection", (socket) => {
       if (playerName) {
         delete gameStates[room];
         io.to(room).emit("room_deleted");
+        console.log(`Room deleted due to disconnection: ${room}`);
       }
     }
   });
