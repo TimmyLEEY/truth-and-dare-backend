@@ -169,126 +169,6 @@ const prompts = {
     "What’s a fantasy you’ve always wanted to act out but haven’t told me about?",
     "What’s the one thing i do that drives you crazy in a good and bd way?",
     "If you could choose one secret location for us to be naughty,where would it be and why?",
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   ],
   dare: [
@@ -325,7 +205,7 @@ const prompts = {
   ],
 };
 
-// Connection handler
+
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
@@ -389,28 +269,24 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const questions = [...prompts[type]]; // Copy the array to avoid modifying the original
+    const questions = [...prompts[type]];
     const usedQuestions = gameState.usedQuestions || {};
     const usedByType = usedQuestions[type] || [];
 
-    // Filter out already used questions for this type
     const availableQuestions = questions.filter((q) => !usedByType.includes(q));
 
-    // If no more available questions, reset the used list
     if (availableQuestions.length === 0) {
       usedQuestions[type] = [];
     } else {
       const randomIndex = Math.floor(Math.random() * availableQuestions.length);
       const prompt = availableQuestions[randomIndex];
 
-      // Mark the question as used
       usedByType.push(prompt);
       usedQuestions[type] = usedByType;
       gameState.usedQuestions = usedQuestions;
 
       io.to(room).emit("new_prompt", { type, prompt, player: currentPlayerName });
 
-      // Update the turn to the next player
       const nextPlayerName = Object.keys(gameState.players).find((name) => name !== currentPlayerName);
       gameState.currentTurn = nextPlayerName;
     }
@@ -422,26 +298,64 @@ io.on("connection", (socket) => {
     io.to(room).emit("room_deleted");
   });
 
+  socket.on("reconnect_room", ({ playerName, room }) => {
+    const gameState = gameStates[room];
+    if (gameState && gameState.players[playerName]) {
+      gameState.players[playerName].id = socket.id;
+
+      const player = players.find((p) => p.name === playerName);
+      if (player) player.disconnected = false;
+
+      socket.join(room);
+      io.to(room).emit("player_reconnected", playerName);
+      console.log(`${playerName} reconnected to room ${room}`);
+    } else {
+      socket.emit("error_message", "Room not found or expired.");
+    }
+  });
+
+
+  socket.on("rejoin_room", ({ room, playerName }) => {
+    if (rooms[room]) {
+      rooms[room].players.push(playerName);
+      socket.join(room);
+      io.to(room).emit("room_state", rooms[room]);
+    } else {
+      socket.emit("room_deleted");
+    }
+  });
+  
+
   socket.on("disconnect", () => {
     console.log("A user disconnected:", socket.id);
-    players = players.filter((p) => p.id !== socket.id);
-    io.emit("player_list", players.map((player) => player.name));
 
-    // Remove player from any active games
-    for (const room in gameStates) {
-      const gameState = gameStates[room];
-      const playerName = Object.keys(gameState.players).find(
-        (name) => gameState.players[name].id === socket.id
-      );
+    const disconnectedPlayer = players.find((p) => p.id === socket.id);
 
-      if (playerName) {
-        delete gameStates[room];
-        io.to(room).emit("room_deleted");
-      }
+    if (disconnectedPlayer) {
+      disconnectedPlayer.disconnected = true;
+
+      setTimeout(() => {
+        if (disconnectedPlayer.disconnected) {
+          console.log(`Deleting room after timeout: ${socket.id}`);
+          players = players.filter((p) => p.id !== socket.id);
+
+          for (const room in gameStates) {
+            const gameState = gameStates[room];
+            if (gameState.players[disconnectedPlayer.name]) {
+              delete gameStates[room];
+              io.to(room).emit("room_deleted");
+            }
+          }
+        }
+      }, 300000); // 5 minutes
     }
   });
 });
 
+app.get("/", (req, res) => {
+  res.send("Backend is running.");
+});
+
 server.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`Server running on http://127.0.0.1:${PORT}`);
 });
